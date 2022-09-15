@@ -18,12 +18,13 @@ local DEFAULT_OPTIONS = {
 
 local ns = api.nvim_create_namespace "colorizer"
 
-local SETUP_SETTINGS = {
+local settings = {
   exclusions = {};
   default_options = DEFAULT_OPTIONS;
 }
-local BUFFER_OPTIONS = {}
-local FILETYPE_OPTIONS = {}
+
+local buf_options = {}
+local ft_options = {}
 
 local function get_buf(buf)
   if buf == 0 or buf == nil then
@@ -36,7 +37,7 @@ end
 -- @tparam[opt=0|nil] integer buf A value of 0 implies the current buffer.
 -- @return true if attached to the buffer, false otherwise.
 local function is_buffer_attached(buf)
-  return BUFFER_OPTIONS[get_buf(buf)] ~= nil
+  return buf_options[get_buf(buf)] ~= nil
 end
 
 local M = {}
@@ -48,27 +49,27 @@ local M = {}
 function M.attach_to_buffer(buf, options)
   buf = get_buf(buf)
   if not options then
-    options = FILETYPE_OPTIONS[vim.bo[buf].filetype] or SETUP_SETTINGS.default_options
+    options = ft_options[vim.bo[buf].filetype] or settings.default_options
   end
-  BUFFER_OPTIONS[buf] = options
+  buf_options[buf] = options
 end
 
 local function on_buf(_, buf)
-  local options = BUFFER_OPTIONS[buf]
+  local options = buf_options[buf]
   if options then
     options._loop_parse_fn = matcher.make(options)
   end
 end
 
 local function on_win(_, _, buf)
-  local options = BUFFER_OPTIONS[buf]
+  local options = buf_options[buf]
   if not options or not options._loop_parse_fn then
     return false
   end
 end
 
 local function on_line(_, _, buf, row)
-  local options = BUFFER_OPTIONS[buf]
+  local options = buf_options[buf]
   local loop_parse_fn = options._loop_parse_fn
   local line = api.nvim_buf_get_lines(buf, row, row+1, true)[1]
   local i = 1
@@ -93,11 +94,11 @@ end
 local function detach_from_buffer(buf)
   buf = get_buf(buf)
   api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-  BUFFER_OPTIONS[buf] = nil
+  buf_options[buf] = nil
 end
 
 local function colorizer_setup_hook()
-  if SETUP_SETTINGS.exclusions[vim.bo.filetype] then
+  if settings.exclusions[vim.bo.filetype] then
     return
   end
   M.attach_to_buffer()
@@ -105,7 +106,7 @@ end
 
 --- Reload all of the currently active highlighted buffers.
 local function reload_all_buffers()
-  for buf, _ in pairs(BUFFER_OPTIONS) do
+  for buf, _ in pairs(buf_options) do
     M.attach_to_buffer(buf)
   end
 end
@@ -134,8 +135,8 @@ function M.setup(filetypes, user_default_options)
     api.nvim_err_writeln("&termguicolors must be set")
     return
   end
-  FILETYPE_OPTIONS = {}
-  SETUP_SETTINGS = {
+  ft_options = {}
+  settings = {
     exclusions = {};
     default_options = vim.tbl_extend('force', DEFAULT_OPTIONS, user_default_options or {});
   }
@@ -151,13 +152,13 @@ function M.setup(filetypes, user_default_options)
   else
     for k, v in pairs(filetypes) do
       local filetype
-      local options = SETUP_SETTINGS.default_options
+      local options = settings.default_options
       if type(k) == 'string' then
         filetype = k
         if type(v) ~= 'table' then
           api.nvim_err_writeln("colorizer: Invalid option type for filetype "..filetype)
         else
-          options = vim.tbl_extend('force', SETUP_SETTINGS.default_options, v)
+          options = vim.tbl_extend('force', settings.default_options, v)
           assert(highlight.MODE_NAMES[options.mode or 'background'], "colorizer: Invalid mode: "..tostring(options.mode))
         end
       else
@@ -165,9 +166,9 @@ function M.setup(filetypes, user_default_options)
       end
       -- Exclude
       if filetype:sub(1,1) == '!' then
-        SETUP_SETTINGS.exclusions[filetype:sub(2)] = true
+        settings.exclusions[filetype:sub(2)] = true
       else
-        FILETYPE_OPTIONS[filetype] = options
+        ft_options[filetype] = options
         api.nvim_create_autocmd('FileType', {
           pattern = filetype,
           group = group,
