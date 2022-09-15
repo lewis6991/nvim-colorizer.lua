@@ -181,7 +181,7 @@ local function print_trie_table(s)
   end
   local lines = {}
   for _, child in ipairs(s.children) do
-    local child_lines = print_trie_table(child, thicc)
+    local child_lines = print_trie_table(child)
     for _, child_line in ipairs(child_lines) do
       table.insert(lines, child_line)
     end

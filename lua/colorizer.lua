@@ -431,10 +431,7 @@ buffer `buf` and attach it to the namespace `ns`.
 @param options Configuration options as described in `setup`
 @see setup
 ]]
-local function highlight_buffer(buf, ns, lines, line_start, options)
-  -- TODO do I have to put this here?
-  initialize_trie()
-  ns = ns or NS
+local function highlight_buffer(buf, lines, line_start, options)
   local loop_parse_fn = make_matcher(options)
   for current_linenum, line in ipairs(lines) do
     current_linenum = current_linenum - 1 + line_start
@@ -444,7 +441,10 @@ local function highlight_buffer(buf, ns, lines, line_start, options)
       local length, rgb_hex = loop_parse_fn(line, i)
       if length then
         local highlight_name = create_highlight(rgb_hex, options)
-        api.nvim_buf_add_highlight(buf, ns, highlight_name, current_linenum, i-1, i+length-1)
+        api.nvim_buf_set_extmark(buf, NS, current_linenum, i - 1, {
+          end_col = i + length - 1,
+          hl_group = highlight_name,
+        })
         i = i + length
       else
         i = i + 1
@@ -465,14 +465,13 @@ local BUFFER_OPTIONS = {}
 local FILETYPE_OPTIONS = {}
 
 local function rehighlight_buffer(buf, options)
-  local ns = NS
   if buf == 0 or buf == nil then
     buf = api.nvim_get_current_buf()
   end
   assert(options)
-  api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+  api.nvim_buf_clear_namespace(buf, NS, 0, -1)
   local lines = api.nvim_buf_get_lines(buf, 0, -1, true)
-  highlight_buffer(buf, ns, lines, 0, options)
+  highlight_buffer(buf, lines, 0, options)
 end
 
 local function new_buffer_options(buf)
@@ -490,34 +489,33 @@ local function is_buffer_attached(buf)
   return BUFFER_OPTIONS[buf] ~= nil
 end
 
+_G.events = {}
+
 --- Attach to a buffer and continuously highlight changes.
 -- @tparam[opt=0|nil] integer buf A value of 0 implies the current buffer.
 -- @param[opt] options Configuration options as described in `setup`
 -- @see setup
 local function attach_to_buffer(buf, options)
-  if buf == 0 or buf == nil then
-    buf = api.nvim_get_current_buf()
-  end
+  buf = buf or api.nvim_get_current_buf()
   local already_attached = BUFFER_OPTIONS[buf] ~= nil
-  local ns = NS
   if not options then
     options = new_buffer_options(buf)
   end
   BUFFER_OPTIONS[buf] = options
-  rehighlight_buffer(buf, options)
   if already_attached then
     return
   end
   -- send_buffer: true doesn't actually do anything in Lua (yet)
+  rehighlight_buffer(buf, options)
   api.nvim_buf_attach(buf, false, {
     on_lines = function(_, _, _, firstline, _, new_lastline)
       -- This is used to signal stopping the handler highlights
       if not BUFFER_OPTIONS[buf] then
         return true
       end
-      api.nvim_buf_clear_namespace(buf, ns, firstline, new_lastline)
+      api.nvim_buf_clear_namespace(buf, NS, firstline, new_lastline)
       local lines = api.nvim_buf_get_lines(buf, firstline, new_lastline, false)
-      highlight_buffer(buf, ns, lines, firstline, BUFFER_OPTIONS[buf])
+      highlight_buffer(buf, lines, firstline, BUFFER_OPTIONS[buf])
     end;
     on_detach = function()
       BUFFER_OPTIONS[buf] = nil
@@ -528,11 +526,9 @@ end
 --- Stop highlighting the current buffer.
 -- @tparam[opt=0|nil] integer buf A value of 0 or nil implies the current buffer.
 -- @tparam[opt=NS] integer ns the namespace id.
-local function detach_from_buffer(buf, ns)
-  if buf == 0 or buf == nil then
-    buf = api.nvim_get_current_buf()
-  end
-  api.nvim_buf_clear_namespace(buf, ns or NS, 0, -1)
+local function detach_from_buffer(buf)
+  buf = buf or api.nvim_get_current_buf()
+  api.nvim_buf_clear_namespace(buf, NS, 0, -1)
   BUFFER_OPTIONS[buf] = nil
 end
 
@@ -542,7 +538,7 @@ local function colorizer_setup_hook()
     return
   end
   local options = FILETYPE_OPTIONS[filetype] or SETUP_SETTINGS.default_options
-  attach_to_buffer(api.nvim_get_current_buf(), options)
+  attach_to_buffer(nil, options)
 end
 
 --- Reload all of the currently active highlighted buffers.
@@ -586,10 +582,10 @@ function M.setup(filetypes, user_default_options)
   -- Initialize this AFTER setting COLOR_NAME_SETTINGS
   initialize_trie()
 
-  api.nvim_create_augroup("ColorizerSetup", {})
+  local group = api.nvim_create_augroup("ColorizerSetup", {})
   if not filetypes then
     api.nvim_create_autocmd('FileType', {
-      group = 'ColorizerSetup',
+      group = group,
       callback = colorizer_setup_hook
     })
   else
@@ -612,10 +608,9 @@ function M.setup(filetypes, user_default_options)
         SETUP_SETTINGS.exclusions[filetype:sub(2)] = true
       else
         FILETYPE_OPTIONS[filetype] = options
-        -- TODO What's the right mode for this? BufEnter?
         api.nvim_create_autocmd('FileType', {
           pattern = filetype,
-          group = 'ColorizerSetup',
+          group = group,
           callback = colorizer_setup_hook
         })
       end
@@ -632,10 +627,10 @@ function M.setup(filetypes, user_default_options)
   command('ColorizerDetachFromBuffer', detach_from_buffer)
   command('ColorizerReloadAllBuffers', reload_all_buffers)
   command('ColorizerToggle', function()
-    if is_buffer_attached(0) then
-      detach_from_buffer(0)
+    if is_buffer_attached() then
+      detach_from_buffer()
     else
-      attach_to_buffer(0)
+      attach_to_buffer()
     end
   end)
 
