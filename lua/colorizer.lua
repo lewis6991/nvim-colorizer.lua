@@ -420,59 +420,12 @@ local function make_matcher(options)
   return loop_parse_fn
 end
 
---[[-- Highlight the buffer region.
-Highlight starting from `line_start` (0-indexed) for each line described by `lines` in the
-buffer `buf` and attach it to the namespace `ns`.
-
-@tparam integer buf buffer id.
-@tparam[opt=DEFAULT_NAMESPACE] integer ns the namespace id. Create it with `vim.api.create_namespace`
-@tparam {string,...} lines the lines to highlight from the buffer.
-@tparam integer line_start should be 0-indexed
-@param options Configuration options as described in `setup`
-@see setup
-]]
-local function highlight_buffer(buf, lines, line_start, options)
-  local loop_parse_fn = make_matcher(options)
-  for current_linenum, line in ipairs(lines) do
-    current_linenum = current_linenum - 1 + line_start
-    -- Upvalues are options and current_linenum
-    local i = 1
-    while i < #line do
-      local length, rgb_hex = loop_parse_fn(line, i)
-      if length then
-        local highlight_name = create_highlight(rgb_hex, options)
-        api.nvim_buf_set_extmark(buf, NS, current_linenum, i - 1, {
-          end_col = i + length - 1,
-          hl_group = highlight_name,
-        })
-        i = i + length
-      else
-        i = i + 1
-      end
-    end
-  end
-end
-
----
--- USER FACING FUNCTIONALITY
----
-
 local SETUP_SETTINGS = {
   exclusions = {};
   default_options = DEFAULT_OPTIONS;
 }
 local BUFFER_OPTIONS = {}
 local FILETYPE_OPTIONS = {}
-
-local function rehighlight_buffer(buf, options)
-  if buf == 0 or buf == nil then
-    buf = api.nvim_get_current_buf()
-  end
-  assert(options)
-  api.nvim_buf_clear_namespace(buf, NS, 0, -1)
-  local lines = api.nvim_buf_get_lines(buf, 0, -1, true)
-  highlight_buffer(buf, lines, 0, options)
-end
 
 local function new_buffer_options(buf)
   local filetype = vim.bo[buf].filetype
@@ -491,12 +444,16 @@ end
 
 _G.events = {}
 
+local M = {}
+
 --- Attach to a buffer and continuously highlight changes.
 -- @tparam[opt=0|nil] integer buf A value of 0 implies the current buffer.
 -- @param[opt] options Configuration options as described in `setup`
 -- @see setup
-local function attach_to_buffer(buf, options)
-  buf = buf or api.nvim_get_current_buf()
+function M.attach_to_buffer(buf, options)
+  if not buf or buf == 0 then
+    buf = api.nvim_get_current_buf()
+  end
   local already_attached = BUFFER_OPTIONS[buf] ~= nil
   if not options then
     options = new_buffer_options(buf)
@@ -505,22 +462,39 @@ local function attach_to_buffer(buf, options)
   if already_attached then
     return
   end
-  -- send_buffer: true doesn't actually do anything in Lua (yet)
-  rehighlight_buffer(buf, options)
-  api.nvim_buf_attach(buf, false, {
-    on_lines = function(_, _, _, firstline, _, new_lastline)
-      -- This is used to signal stopping the handler highlights
-      if not BUFFER_OPTIONS[buf] then
-        return true
-      end
-      api.nvim_buf_clear_namespace(buf, NS, firstline, new_lastline)
-      local lines = api.nvim_buf_get_lines(buf, firstline, new_lastline, false)
-      highlight_buffer(buf, lines, firstline, BUFFER_OPTIONS[buf])
-    end;
-    on_detach = function()
-      BUFFER_OPTIONS[buf] = nil
-    end;
-  })
+end
+
+local function on_buf(_, buf)
+  local options = BUFFER_OPTIONS[buf]
+  if options then
+    options._loop_parse_fn = make_matcher(options)
+  end
+end
+
+local function on_win(_, _, buf)
+  if not BUFFER_OPTIONS[buf] then
+    return false
+  end
+end
+
+local function on_line(_, _, buf, row)
+  local options = BUFFER_OPTIONS[buf]
+  local loop_parse_fn = options._loop_parse_fn
+  local line = api.nvim_buf_get_lines(buf, row, row+1, true)[1]
+  local i = 1
+  while i < #line do
+    local length, rgb_hex = loop_parse_fn(line, i)
+    if length then
+      api.nvim_buf_set_extmark(buf, NS, row, i - 1, {
+        end_col = i + length - 1,
+        hl_group = create_highlight(rgb_hex, options),
+        ephemeral = true
+      })
+      i = i + length
+    else
+      i = i + 1
+    end
+  end
 end
 
 --- Stop highlighting the current buffer.
@@ -538,17 +512,15 @@ local function colorizer_setup_hook()
     return
   end
   local options = FILETYPE_OPTIONS[filetype] or SETUP_SETTINGS.default_options
-  attach_to_buffer(nil, options)
+  M.attach_to_buffer(nil, options)
 end
 
 --- Reload all of the currently active highlighted buffers.
 local function reload_all_buffers()
   for buf, _ in pairs(BUFFER_OPTIONS) do
-    attach_to_buffer(buf)
+    M.attach_to_buffer(buf)
   end
 end
-
-local M = {}
 
 --- Easy to use function if you want the full setup without fine grained control.
 -- Setup an autocmd which enables colorizing for the filetypes and options specified.
@@ -617,20 +589,26 @@ function M.setup(filetypes, user_default_options)
     end
   end
 
+  api.nvim_set_decoration_provider(NS, {
+    on_win = on_win,
+    on_buf = on_buf,
+    on_line = on_line
+  })
+
   local function command(name, fn)
     api.nvim_create_user_command(name, function()
       fn()
     end, { force = true})
   end
 
-  command('ColorizerAttachToBuffer', attach_to_buffer)
+  command('ColorizerAttachToBuffer', M.attach_to_buffer)
   command('ColorizerDetachFromBuffer', detach_from_buffer)
   command('ColorizerReloadAllBuffers', reload_all_buffers)
   command('ColorizerToggle', function()
     if is_buffer_attached() then
       detach_from_buffer()
     else
-      attach_to_buffer()
+      M.attach_to_buffer()
     end
   end)
 
