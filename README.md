@@ -1,6 +1,6 @@
 # colorizer.lua
 
-[![luadoc](https://img.shields.io/badge/luadoc-0.1-blue)](https://norcalli.github.io/luadoc/nvim-colorizer.lua/modules/colorizer.html)
+(@lewis6991's Personal fork)
 
 A high-performance color highlighter for Neovim which has **no external dependencies**! Written in performant Luajit.
 
@@ -10,25 +10,22 @@ A high-performance color highlighter for Neovim which has **no external dependen
 
 ## Installation and Usage
 
-Requires Neovim >= 0.4.0 and `set termguicolors` (I'm looking into relaxing
-these constraints). If you don't have true color for your terminal or are
+Requires Neovim >= 0.7.0 and `set termguicolors`.
+
+If you don't have true color for your terminal or are
 unsure, [read this excellent guide](https://github.com/termstandard/colors).
 
 Use your plugin manager or clone directly into your `runtimepath`.
 
 ```vim
-Plug 'norcalli/nvim-colorizer.lua'
+Plug 'lewis6991/nvim-colorizer.lua'
 ```
 
 As long as you have `malloc()` and `free()` on your system, this will work.
 Which includes Linux, OSX, and Windows.
 
-One line setup. This will create an `autocmd` for `FileType *` to highlight
-every filetype.
-**NOTE**: You should add this line after/below where your plugins are setup.
-
-```vim
-lua require'colorizer'.setup()
+```lua
+require'colorizer'.setup()
 ```
 
 ### Why another highlighter?
@@ -50,16 +47,16 @@ library to do custom highlighting themselves.
 
 ```lua
   DEFAULT_OPTIONS = {
-	RGB      = true;         -- #RGB hex codes
-	RRGGBB   = true;         -- #RRGGBB hex codes
-	names    = true;         -- "Name" codes like Blue
-	RRGGBBAA = false;        -- #RRGGBBAA hex codes
-	rgb_fn   = false;        -- CSS rgb() and rgba() functions
-	hsl_fn   = false;        -- CSS hsl() and hsla() functions
-	css      = false;        -- Enable all CSS features: rgb_fn, hsl_fn, names, RGB, RRGGBB
-	css_fn   = false;        -- Enable all CSS *functions*: rgb_fn, hsl_fn
-	-- Available modes: foreground, background
-	mode     = 'background'; -- Set the display mode.
+    RGB      = true;         -- #RGB hex codes
+    RRGGBB   = true;         -- #RRGGBB hex codes
+    names    = true;         -- "Name" codes like Blue
+    RRGGBBAA = false;        -- #RRGGBBAA hex codes
+    rgb_fn   = false;        -- CSS rgb() and rgba() functions
+    hsl_fn   = false;        -- CSS hsl() and hsla() functions
+    css      = false;        -- Enable all CSS features: rgb_fn, hsl_fn, names, RGB, RRGGBB
+    css_fn   = false;        -- Enable all CSS *functions*: rgb_fn, hsl_fn
+    -- Available modes: foreground, background
+    mode     = 'background'; -- Set the display mode.
   }
 ```
 
@@ -145,11 +142,3 @@ Toggle highlighting of the current buffer.
 If the file you are editing has no filetype, the plugin won't be attached, as
 it relies on AutoCmd to do so. You can still make it work by running the
 following command: `:ColorizerAttachToBuffer`
-
-See [this comment](https://github.com/norcalli/nvim-colorizer.lua/issues/9#issuecomment-543742619) for more information.
-
-## TODO
-
-- [ ] Add more display modes?
-- [ ] Use a more space efficient trie implementation.
-- [ ] Create a COMMON_SETUP which does obvious things like enable `rgb_fn` for css

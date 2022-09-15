@@ -1,6 +1,6 @@
 *colorizer.lua* Highlight color codes like #RRGGBB and others.
 
-Minimum version of neovim: 0.4.0
+Minimum version of neovim: 0.7.0
 
 Author: Ashkan Kiani <from-nvim-colorizer.lua@kiani.io>
 
