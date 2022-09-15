@@ -385,7 +385,8 @@ local function on_buf(_, buf)
 end
 
 local function on_win(_, _, buf)
-  if not BUFFER_OPTIONS[buf] then
+  local options = BUFFER_OPTIONS[buf]
+  if not options or not options._loop_parse_fn then
     return false
   end
 end
