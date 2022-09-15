@@ -33,9 +33,6 @@ local function get_buf(buf)
   return buf
 end
 
---- Check if attached to a buffer.
--- @tparam[opt=0|nil] integer buf A value of 0 implies the current buffer.
--- @return true if attached to the buffer, false otherwise.
 local function is_buffer_attached(buf)
   return buf_options[get_buf(buf)] ~= nil
 end
@@ -43,9 +40,6 @@ end
 local M = {}
 
 --- Attach to a buffer and continuously highlight changes.
--- @tparam[opt=0|nil] integer buf A value of 0 implies the current buffer.
--- @param[opt] options Configuration options as described in `setup`
--- @see setup
 function M.attach_to_buffer(buf, options)
   buf = get_buf(buf)
   if not options then
@@ -89,8 +83,6 @@ local function on_line(_, _, buf, row)
 end
 
 --- Stop highlighting the current buffer.
--- @tparam[opt=0|nil] integer buf A value of 0 or nil implies the current buffer.
--- @tparam[opt=NS] integer ns the namespace id.
 local function detach_from_buffer(buf)
   buf = get_buf(buf)
   api.nvim_buf_clear_namespace(buf, ns, 0, -1)
@@ -112,24 +104,22 @@ local function reload_all_buffers()
 end
 
 --- Easy to use function if you want the full setup without fine grained control.
--- Setup an autocmd which enables colorizing for the filetypes and options specified.
---
--- By default highlights all FileTypes.
---
--- Example config:
--- ```
--- { 'scss', 'html', css = { rgb_fn = true; }, javascript = { no_names = true } }
--- ```
---
--- You can combine an array and more specific options.
--- Possible options:
--- - `no_names`: Don't highlight names like Blue
--- - `rgb_fn`: Highlight `rgb(...)` functions.
--- - `mode`: Highlight mode. Valid options: `foreground`,`background`
---
--- @param[opt={'*'}] filetypes A table/array of filetypes to selectively enable and/or customize. By default, enables all filetypes.
--- @tparam[opt] {[string]=string} default_options Default options to apply for the filetypes enable.
--- @usage require'colorizer'.setup()
+---Setup an autocmd which enables colorizing for the filetypes and options specified.
+---
+---By default highlights all FileTypes.
+---
+---Example config:
+---```
+---{ 'scss', 'html', css = { rgb_fn = true; } }
+---```
+---
+---You can combine an array and more specific options.
+---Possible options:
+--- - `rgb_fn`: Highlight `rgb(...)` functions.
+--- - `mode`: Highlight mode. Valid options: `foreground`,`background`
+---
+---@param filetypes table|string[] Filetypes to selectively enable and/or customize. By default, enables all filetypes.
+---@param user_default_options table Default options to apply for the filetypes enable.
 function M.setup(filetypes, user_default_options)
   if not vim.o.termguicolors then
     api.nvim_err_writeln("&termguicolors must be set")
