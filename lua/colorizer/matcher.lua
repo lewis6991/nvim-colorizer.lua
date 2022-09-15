@@ -8,9 +8,9 @@ local floor, min, max = math.floor, math.min, math.max
 
 local M = {}
 
-local COLOR_MAP
-local COLOR_TRIE
-local COLOR_NAME_MINLEN, COLOR_NAME_MAXLEN
+local color_map
+local color_trie
+local color_minlen
 local COLOR_NAME_SETTINGS = {
   lowercase = false;
   strip_digits = false;
@@ -18,26 +18,24 @@ local COLOR_NAME_SETTINGS = {
 
 --- Setup the COLOR_MAP and COLOR_TRIE
 function M.initialize_trie()
-  if not COLOR_TRIE then
-    COLOR_MAP = {}
-    COLOR_TRIE = Trie()
+  if not color_trie then
+    color_map = {}
+    color_trie = Trie()
     for k, v in pairs(api.nvim_get_color_map()) do
       if not (COLOR_NAME_SETTINGS.strip_digits and k:match("%d+$")) then
-        COLOR_NAME_MINLEN = COLOR_NAME_MINLEN and min(#k, COLOR_NAME_MINLEN) or #k
-        COLOR_NAME_MAXLEN = COLOR_NAME_MAXLEN and max(#k, COLOR_NAME_MAXLEN) or #k
+        color_minlen = color_minlen and min(#k, color_minlen) or #k
         local rgb_hex = tohex(v, 6)
-        COLOR_MAP[k] = rgb_hex
-        COLOR_TRIE:insert(k)
+        color_map[k] = rgb_hex
+        color_trie:insert(k)
         if COLOR_NAME_SETTINGS.lowercase then
           local lowercase = k:lower()
-          COLOR_MAP[lowercase] = rgb_hex
-          COLOR_TRIE:insert(lowercase)
+          color_map[lowercase] = rgb_hex
+          color_trie:insert(lowercase)
         end
       end
     end
   end
 end
-
 
 -- -- TODO use rgb as the return value from the matcher functions
 -- -- instead of the rgb_hex. Can be the highlight key as well
@@ -95,8 +93,10 @@ local function color_name_parser(line, i)
   if i > 1 and byte_is_alphanumeric(line:byte(i-1)) then
     return
   end
-  if #line < i + COLOR_NAME_MINLEN - 1 then return end
-  local prefix = COLOR_TRIE:longest_prefix(line, i)
+  if #line < i + color_minlen - 1 then
+    return
+  end
+  local prefix = color_trie:longest_prefix(line, i)
   if prefix then
     -- Check if there is a letter here so as to disallow matching here.
     -- Take the Blue out of Blueberry
@@ -105,7 +105,7 @@ local function color_name_parser(line, i)
     if #line >= next_byte_index and byte_is_alphanumeric(line:byte(next_byte_index)) then
       return
     end
-    return #prefix, COLOR_MAP[prefix]
+    return #prefix, color_map[prefix]
   end
 end
 
@@ -177,8 +177,6 @@ local function hsl_function_parser(line, i)
   end
 end
 
-
-
 local function compile_matcher(matchers)
   local parse_fn = matchers[1]
   for j = 2, #matchers do
@@ -193,8 +191,7 @@ local function compile_matcher(matchers)
   return parse_fn
 end
 
-
-local MATCHER_CACHE = {}
+local matcher_cache = {}
 
 function M.make(options)
   local enable_names    = options.css or options.names
@@ -217,7 +214,7 @@ function M.make(options)
     return
   end
 
-  local loop_parse_fn = MATCHER_CACHE[matcher_key]
+  local loop_parse_fn = matcher_cache[matcher_key]
   if loop_parse_fn then
     return loop_parse_fn
   end
@@ -252,7 +249,7 @@ function M.make(options)
     loop_matchers[#loop_matchers+1] = hsl_function_parser
   end
   loop_parse_fn = compile_matcher(loop_matchers)
-  MATCHER_CACHE[matcher_key] = loop_parse_fn
+  matcher_cache[matcher_key] = loop_parse_fn
   return loop_parse_fn
 end
 

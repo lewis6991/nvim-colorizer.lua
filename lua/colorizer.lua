@@ -1,7 +1,5 @@
---- Highlights terminal CSI ANSI color codes.
--- @module colorizer
-
 local matcher = require('colorizer.matcher')
+local highlight = require('colorizer.highlight')
 
 local api = vim.api
 
@@ -18,64 +16,7 @@ local DEFAULT_OPTIONS = {
   mode     = 'background'; -- Set the display mode.
 }
 
---- Determine whether to use black or white text
--- Ref: https://stackoverflow.com/a/1855903/837964
--- https://stackoverflow.com/questions/596216/formula-to-determine-brightness-of-rgb-color
-local function color_is_bright(rgb_hex)
-  local r = tonumber(rgb_hex:sub(1,2), 16)
-  local g = tonumber(rgb_hex:sub(3,4), 16)
-  local b = tonumber(rgb_hex:sub(5,6), 16)
-  -- Counting the perceptive luminance - human eye favors green color
-  local luminance = (0.299*r + 0.587*g + 0.114*b)/255
-  return luminance > 0.5
-end
-
---- Default namespace used in `highlight_buffer` and `attach_to_buffer`.
--- The name is "terminal_highlight"
--- @see highlight_buffer
--- @see attach_to_buffer
-local NS = api.nvim_create_namespace "colorizer"
-local HL_MODE_NAMES = { background = "mb"; foreground = "mf"; }
-local HIGHLIGHT_CACHE = {}
-
---- Make a deterministic name for a highlight given these attributes
-local function make_highlight_name(rgb, mode)
-  return table.concat({'colorizer', HL_MODE_NAMES[mode], rgb}, '_')
-end
-
-local function create_highlight(rgb_hex, mode)
-  if #rgb_hex == 3 then
-    rgb_hex = table.concat {
-      rgb_hex:sub(1,1):rep(2);
-      rgb_hex:sub(2,2):rep(2);
-      rgb_hex:sub(3,3):rep(2);
-    }
-  end
-  -- Create the highlight
-  local highlight_name = make_highlight_name(rgb_hex, mode)
-  if mode == 'foreground' then
-    api.nvim_set_hl(0, highlight_name, {fg = tonumber('0x'..rgb_hex)})
-  else
-    local fg_color = color_is_bright(rgb_hex) and 'Black' or 'White'
-    api.nvim_set_hl(0, highlight_name, { fg = fg_color, bg = tonumber('0x'..rgb_hex)})
-  end
-  return highlight_name
-end
-
-local function get_or_create_highlight(rgb_hex, options)
-  local mode = options.mode or 'background'
-  -- TODO validate rgb format?
-  rgb_hex = rgb_hex:lower()
-  local cache_key = table.concat({HL_MODE_NAMES[mode], rgb_hex}, "_")
-  local highlight_name = HIGHLIGHT_CACHE[cache_key]
-  -- Look up in our cache.
-  if not highlight_name then
-    highlight_name = create_highlight(rgb_hex, options.mode)
-    HIGHLIGHT_CACHE[cache_key] = highlight_name
-  end
-  return highlight_name
-end
-
+local ns = api.nvim_create_namespace "colorizer"
 
 local SETUP_SETTINGS = {
   exclusions = {};
@@ -97,8 +38,6 @@ end
 local function is_buffer_attached(buf)
   return BUFFER_OPTIONS[get_buf(buf)] ~= nil
 end
-
-_G.events = {}
 
 local M = {}
 
@@ -136,9 +75,9 @@ local function on_line(_, _, buf, row)
   while i < #line do
     local length, rgb_hex = loop_parse_fn(line, i)
     if length then
-      api.nvim_buf_set_extmark(buf, NS, row, i - 1, {
+      api.nvim_buf_set_extmark(buf, ns, row, i - 1, {
         end_col = i + length - 1,
-        hl_group = get_or_create_highlight(rgb_hex, options),
+        hl_group = highlight.get_or_create(rgb_hex, options),
         ephemeral = true
       })
       i = i + length
@@ -153,7 +92,7 @@ end
 -- @tparam[opt=NS] integer ns the namespace id.
 local function detach_from_buffer(buf)
   buf = get_buf(buf)
-  api.nvim_buf_clear_namespace(buf, NS, 0, -1)
+  api.nvim_buf_clear_namespace(buf, ns, 0, -1)
   BUFFER_OPTIONS[buf] = nil
 end
 
@@ -219,7 +158,7 @@ function M.setup(filetypes, user_default_options)
           api.nvim_err_writeln("colorizer: Invalid option type for filetype "..filetype)
         else
           options = vim.tbl_extend('force', SETUP_SETTINGS.default_options, v)
-          assert(HL_MODE_NAMES[options.mode or 'background'], "colorizer: Invalid mode: "..tostring(options.mode))
+          assert(highlight.MODE_NAMES[options.mode or 'background'], "colorizer: Invalid mode: "..tostring(options.mode))
         end
       else
         filetype = v
@@ -238,7 +177,7 @@ function M.setup(filetypes, user_default_options)
     end
   end
 
-  api.nvim_set_decoration_provider(NS, {
+  api.nvim_set_decoration_provider(ns, {
     on_win = on_win,
     on_buf = on_buf,
     on_line = on_line
