@@ -1,14 +1,10 @@
 --- Highlights terminal CSI ANSI color codes.
 -- @module colorizer
-local nvim = require 'colorizer/nvim'
 local Trie = require 'colorizer/trie'
 local bit = require 'bit'
 local ffi = require 'ffi'
 
-local nvim_buf_add_highlight = vim.api.nvim_buf_add_highlight
-local nvim_buf_clear_namespace = vim.api.nvim_buf_clear_namespace
-local nvim_buf_get_lines = vim.api.nvim_buf_get_lines
-local nvim_get_current_buf = vim.api.nvim_get_current_buf
+local api = vim.api
 local band, lshift, bor, tohex = bit.band, bit.lshift, bit.bor, bit.tohex
 local rshift = bit.rshift
 local floor, min, max = math.floor, math.min, math.max
@@ -26,7 +22,7 @@ local function initialize_trie()
   if not COLOR_TRIE then
     COLOR_MAP = {}
     COLOR_TRIE = Trie()
-    for k, v in pairs(nvim.get_color_map()) do
+    for k, v in pairs(api.nvim_get_color_map()) do
       if not (COLOR_NAME_SETTINGS.strip_digits and k:match("%d+$")) then
         COLOR_NAME_MINLEN = COLOR_NAME_MINLEN and min(#k, COLOR_NAME_MINLEN) or #k
         COLOR_NAME_MAXLEN = COLOR_NAME_MAXLEN and max(#k, COLOR_NAME_MAXLEN) or #k
@@ -131,14 +127,13 @@ end
 --- Determine whether to use black or white text
 -- Ref: https://stackoverflow.com/a/1855903/837964
 -- https://stackoverflow.com/questions/596216/formula-to-determine-brightness-of-rgb-color
-local function color_is_bright(r, g, b)
+local function color_is_bright(rgb_hex)
+  local r = tonumber(rgb_hex:sub(1,2), 16)
+  local g = tonumber(rgb_hex:sub(3,4), 16)
+  local b = tonumber(rgb_hex:sub(5,6), 16)
   -- Counting the perceptive luminance - human eye favors green color
   local luminance = (0.299*r + 0.587*g + 0.114*b)/255
-  if luminance > 0.5 then
-    return true -- Bright colors, black font
-  else
-    return false -- Dark colors, white font
-  end
+  return luminance > 0.5
 end
 
 -- https://gist.github.com/mjackson/5311256
@@ -220,8 +215,8 @@ local function rgb_hex_parser(line, i, minlen, maxlen)
     local b = floor(band(rshift(v, 16), 0xFF)*alpha)
     v = bor(lshift(r, 16), lshift(g, 8), b)
     return 9, tohex(v, 6)
-end
-return length, line:sub(i+1, i+length-1)
+  end
+  return length, line:sub(i+1, i+length-1)
 end
 
 -- TODO consider removing the regexes here
@@ -230,14 +225,14 @@ end
 local css_fn = {}
 do
   local CSS_RGB_FN_MINIMUM_LENGTH = #'rgb(0,0,0)' - 1
-local CSS_RGBA_FN_MINIMUM_LENGTH = #'rgba(0,0,0,0)' - 1
-local CSS_HSL_FN_MINIMUM_LENGTH = #'hsl(0,0%,0%)' - 1
-local CSS_HSLA_FN_MINIMUM_LENGTH = #'hsla(0,0%,0%,0)' - 1
-function css_fn.rgb(line, i)
-if #line < i + CSS_RGB_FN_MINIMUM_LENGTH then return end
-local r, g, b, match_end = line:sub(i):match("^rgb%(%s*(%d+%%?)%s*,%s*(%d+%%?)%s*,%s*(%d+%%?)%s*%)()")
-if not match_end then return end
-r = percent_or_hex(r) if not r then return end
+  local CSS_RGBA_FN_MINIMUM_LENGTH = #'rgba(0,0,0,0)' - 1
+  local CSS_HSL_FN_MINIMUM_LENGTH = #'hsl(0,0%,0%)' - 1
+  local CSS_HSLA_FN_MINIMUM_LENGTH = #'hsla(0,0%,0%,0)' - 1
+  function css_fn.rgb(line, i)
+    if #line < i + CSS_RGB_FN_MINIMUM_LENGTH then return end
+    local r, g, b, match_end = line:sub(i):match("^rgb%(%s*(%d+%%?)%s*,%s*(%d+%%?)%s*,%s*(%d+%%?)%s*%)()")
+    if not match_end then return end
+    r = percent_or_hex(r) if not r then return end
     g = percent_or_hex(g) if not g then return end
     b = percent_or_hex(b) if not b then return end
     local rgb_hex = tohex(bor(lshift(r, 16), lshift(g, 8), b), 6)
@@ -323,7 +318,7 @@ end
 -- The name is "terminal_highlight"
 -- @see highlight_buffer
 -- @see attach_to_buffer
-local DEFAULT_NAMESPACE = nvim.create_namespace "colorizer"
+local NS = api.nvim_create_namespace "colorizer"
 local HIGHLIGHT_NAME_PREFIX = "colorizer"
 local HIGHLIGHT_MODE_NAMES = {
   background = "mb";
@@ -354,17 +349,10 @@ local function create_highlight(rgb_hex, options)
     -- Create the highlight
     highlight_name = make_highlight_name(rgb_hex, mode)
     if mode == 'foreground' then
-      nvim.ex.highlight(highlight_name, "guifg=#"..rgb_hex)
+      api.nvim_set_hl(0, highlight_name, {fg = tonumber('0x'..rgb_hex)})
     else
-      local r, g, b = rgb_hex:sub(1,2), rgb_hex:sub(3,4), rgb_hex:sub(5,6)
-      r, g, b = tonumber(r,16), tonumber(g,16), tonumber(b,16)
-      local fg_color
-      if color_is_bright(r,g,b) then
-        fg_color = "Black"
-      else
-        fg_color = "White"
-      end
-      nvim.ex.highlight(highlight_name, "guifg="..fg_color, "guibg=#"..rgb_hex)
+      local fg_color = color_is_bright(rgb_hex) and 'Black' or 'White'
+      api.nvim_set_hl(0, highlight_name, { fg = fg_color, bg = tonumber('0x'..rgb_hex)})
     end
     HIGHLIGHT_CACHE[cache_key] = highlight_name
   end
@@ -386,9 +374,12 @@ local function make_matcher(options)
     lshift(enable_RRGGBB   and 1 or 0, 2),
     lshift(enable_RRGGBBAA and 1 or 0, 3),
     lshift(enable_rgb      and 1 or 0, 4),
-    lshift(enable_hsl      and 1 or 0, 5))
+    lshift(enable_hsl      and 1 or 0, 5)
+  )
 
-  if matcher_key == 0 then return end
+  if matcher_key == 0 then
+    return
+  end
 
   local loop_parse_fn = MATCHER_CACHE[matcher_key]
   if loop_parse_fn then
@@ -397,36 +388,36 @@ local function make_matcher(options)
 
   local loop_matchers = {}
   if enable_names then
-    table.insert(loop_matchers, color_name_parser)
+    loop_matchers[#loop_matchers+1] = color_name_parser
   end
-  do
-    local valid_lengths = {[3] = enable_RGB, [6] = enable_RRGGBB, [8] = enable_RRGGBBAA}
-    local minlen, maxlen
-    for k, v in pairs(valid_lengths) do
-      if v then
-        minlen = minlen and min(k, minlen) or k
-        maxlen = maxlen and max(k, maxlen) or k
+
+  local valid_lengths = {[3] = enable_RGB, [6] = enable_RRGGBB, [8] = enable_RRGGBBAA}
+  local minlen, maxlen
+  for k, v in pairs(valid_lengths) do
+    if v then
+      minlen = minlen and min(k, minlen) or k
+      maxlen = maxlen and max(k, maxlen) or k
+    end
+  end
+  if minlen then
+    loop_matchers[#loop_matchers+1] = function(line, i)
+      local length, rgb_hex = rgb_hex_parser(line, i, minlen, maxlen)
+      if length and valid_lengths[length-1] then
+        return length, rgb_hex
       end
     end
-    if minlen then
-      table.insert(loop_matchers, function(line, i)
-        local length, rgb_hex = rgb_hex_parser(line, i, minlen, maxlen)
-        if length and valid_lengths[length-1] then
-          return length, rgb_hex
-        end
-      end)
-    end
   end
+
   if enable_rgb and enable_hsl then
-    table.insert(loop_matchers, css_function_parser)
+    loop_matchers[#loop_matchers+1] = css_function_parser
   elseif enable_rgb then
-    table.insert(loop_matchers, rgb_function_parser)
-elseif enable_hsl then
-table.insert(loop_matchers, hsl_function_parser)
-end
-loop_parse_fn = compile_matcher(loop_matchers)
-MATCHER_CACHE[matcher_key] = loop_parse_fn
-return loop_parse_fn
+    loop_matchers[#loop_matchers+1] = rgb_function_parser
+  elseif enable_hsl then
+    loop_matchers[#loop_matchers+1] = hsl_function_parser
+  end
+  loop_parse_fn = compile_matcher(loop_matchers)
+  MATCHER_CACHE[matcher_key] = loop_parse_fn
+  return loop_parse_fn
 end
 
 --[[-- Highlight the buffer region.
@@ -441,9 +432,9 @@ buffer `buf` and attach it to the namespace `ns`.
 @see setup
 ]]
 local function highlight_buffer(buf, ns, lines, line_start, options)
--- TODO do I have to put this here?
-initialize_trie()
-ns = ns or DEFAULT_NAMESPACE
+  -- TODO do I have to put this here?
+  initialize_trie()
+  ns = ns or NS
   local loop_parse_fn = make_matcher(options)
   for current_linenum, line in ipairs(lines) do
     current_linenum = current_linenum - 1 + line_start
@@ -453,7 +444,7 @@ ns = ns or DEFAULT_NAMESPACE
       local length, rgb_hex = loop_parse_fn(line, i)
       if length then
         local highlight_name = create_highlight(rgb_hex, options)
-        nvim_buf_add_highlight(buf, ns, highlight_name, current_linenum, i-1, i+length-1)
+        api.nvim_buf_add_highlight(buf, ns, highlight_name, current_linenum, i-1, i+length-1)
         i = i + length
       else
         i = i + 1
@@ -474,18 +465,18 @@ local BUFFER_OPTIONS = {}
 local FILETYPE_OPTIONS = {}
 
 local function rehighlight_buffer(buf, options)
-  local ns = DEFAULT_NAMESPACE
+  local ns = NS
   if buf == 0 or buf == nil then
-    buf = nvim_get_current_buf()
+    buf = api.nvim_get_current_buf()
   end
   assert(options)
-  nvim_buf_clear_namespace(buf, ns, 0, -1)
-  local lines = nvim_buf_get_lines(buf, 0, -1, true)
+  api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+  local lines = api.nvim_buf_get_lines(buf, 0, -1, true)
   highlight_buffer(buf, ns, lines, 0, options)
 end
 
 local function new_buffer_options(buf)
-  local filetype = nvim.buf_get_option(buf, 'filetype')
+  local filetype = vim.bo[buf].filetype
   return FILETYPE_OPTIONS[filetype] or SETUP_SETTINGS.default_options
 end
 
@@ -494,7 +485,7 @@ end
 -- @return true if attached to the buffer, false otherwise.
 local function is_buffer_attached(buf)
   if buf == 0 or buf == nil then
-    buf = nvim_get_current_buf()
+    buf = api.nvim_get_current_buf()
   end
   return BUFFER_OPTIONS[buf] ~= nil
 end
@@ -505,10 +496,10 @@ end
 -- @see setup
 local function attach_to_buffer(buf, options)
   if buf == 0 or buf == nil then
-    buf = nvim_get_current_buf()
+    buf = api.nvim_get_current_buf()
   end
   local already_attached = BUFFER_OPTIONS[buf] ~= nil
-  local ns = DEFAULT_NAMESPACE
+  local ns = NS
   if not options then
     options = new_buffer_options(buf)
   end
@@ -518,14 +509,14 @@ local function attach_to_buffer(buf, options)
     return
   end
   -- send_buffer: true doesn't actually do anything in Lua (yet)
-  nvim.buf_attach(buf, false, {
-    on_lines = function(event_type, buf, changed_tick, firstline, lastline, new_lastline)
+  api.nvim_buf_attach(buf, false, {
+    on_lines = function(_, _, _, firstline, _, new_lastline)
       -- This is used to signal stopping the handler highlights
       if not BUFFER_OPTIONS[buf] then
         return true
       end
-      nvim_buf_clear_namespace(buf, ns, firstline, new_lastline)
-      local lines = nvim_buf_get_lines(buf, firstline, new_lastline, false)
+      api.nvim_buf_clear_namespace(buf, ns, firstline, new_lastline)
+      local lines = api.nvim_buf_get_lines(buf, firstline, new_lastline, false)
       highlight_buffer(buf, ns, lines, firstline, BUFFER_OPTIONS[buf])
     end;
     on_detach = function()
@@ -536,12 +527,12 @@ end
 
 --- Stop highlighting the current buffer.
 -- @tparam[opt=0|nil] integer buf A value of 0 or nil implies the current buffer.
--- @tparam[opt=DEFAULT_NAMESPACE] integer ns the namespace id.
+-- @tparam[opt=NS] integer ns the namespace id.
 local function detach_from_buffer(buf, ns)
   if buf == 0 or buf == nil then
-    buf = nvim_get_current_buf()
+    buf = api.nvim_get_current_buf()
   end
-  nvim_buf_clear_namespace(buf, ns or DEFAULT_NAMESPACE, 0, -1)
+  api.nvim_buf_clear_namespace(buf, ns or NS, 0, -1)
   BUFFER_OPTIONS[buf] = nil
 end
 
@@ -566,8 +557,8 @@ end
 -- @tparam[opt] {[string]=string} default_options Default options to apply for the filetypes enable.
 -- @usage require'colorizer'.setup()
 local function setup(filetypes, user_default_options)
-  if not nvim.o.termguicolors then
-    nvim.err_writeln("&termguicolors must be set")
+  if not vim.o.termguicolors then
+    api.nvim_err_writeln("&termguicolors must be set")
     return
   end
   FILETYPE_OPTIONS = {}
@@ -578,17 +569,21 @@ local function setup(filetypes, user_default_options)
   -- Initialize this AFTER setting COLOR_NAME_SETTINGS
   initialize_trie()
   function COLORIZER_SETUP_HOOK()
-    local filetype = nvim.bo.filetype
+    local filetype = vim.bo.filetype
     if SETUP_SETTINGS.exclusions[filetype] then
       return
     end
     local options = FILETYPE_OPTIONS[filetype] or SETUP_SETTINGS.default_options
-    attach_to_buffer(nvim_get_current_buf(), options)
+    attach_to_buffer(api.nvim_get_current_buf(), options)
   end
-  nvim.ex.augroup("ColorizerSetup")
-  nvim.ex.autocmd_()
+  api.nvim_create_augroup("ColorizerSetup", {})
   if not filetypes then
-    nvim.ex.autocmd("FileType * lua COLORIZER_SETUP_HOOK()")
+    api.nvim_create_autocmd('FileType', {
+      group = 'ColorizerSetup',
+      callback = function()
+        COLORIZER_SETUP_HOOK()
+      end
+    })
   else
     for k, v in pairs(filetypes) do
       local filetype
@@ -596,7 +591,7 @@ local function setup(filetypes, user_default_options)
       if type(k) == 'string' then
         filetype = k
         if type(v) ~= 'table' then
-          nvim.err_writeln("colorizer: Invalid option type for filetype "..filetype)
+          api.nvim_err_writeln("colorizer: Invalid option type for filetype "..filetype)
         else
           options = merge(SETUP_SETTINGS.default_options, v)
           assert(HIGHLIGHT_MODE_NAMES[options.mode or 'background'], "colorizer: Invalid mode: "..tostring(options.mode))
@@ -610,16 +605,21 @@ local function setup(filetypes, user_default_options)
       else
         FILETYPE_OPTIONS[filetype] = options
         -- TODO What's the right mode for this? BufEnter?
-        nvim.ex.autocmd("FileType", filetype, "lua COLORIZER_SETUP_HOOK()")
+        api.nvim_create_autocmd('FileType', {
+          pattern = filetype,
+          group = 'ColorizerSetup',
+          callback = function()
+            COLORIZER_SETUP_HOOK()
+          end
+        })
       end
     end
   end
-  nvim.ex.augroup("END")
 end
 
 --- Reload all of the currently active highlighted buffers.
 local function reload_all_buffers()
-  for buf, buffer_options in pairs(BUFFER_OPTIONS) do
+  for buf, _ in pairs(BUFFER_OPTIONS) do
     attach_to_buffer(buf)
   end
 end
@@ -628,19 +628,18 @@ end
 -- @tparam[opt=0|nil] integer buf A value of 0 or nil implies the current buffer.
 local function get_buffer_options(buf)
   if buf == 0 or buf == nil then
-    buf = nvim_get_current_buf()
+    buf = api.nvim_get_current_buf()
   end
   return merge({}, BUFFER_OPTIONS[buf])
 end
 
 --- @export
 return {
-  DEFAULT_NAMESPACE = DEFAULT_NAMESPACE;
+  DEFAULT_NAMESPACE = NS;
   setup = setup;
   is_buffer_attached = is_buffer_attached;
   attach_to_buffer = attach_to_buffer;
   detach_from_buffer = detach_from_buffer;
-  highlight_buffer = highlight_buffer;
   reload_all_buffers = reload_all_buffers;
   get_buffer_options = get_buffer_options;
 }
