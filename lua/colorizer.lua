@@ -45,15 +45,16 @@ function M.attach_to_buffer(buf, options)
   if not options then
     options = ft_options[vim.bo[buf].filetype] or settings.default_options
   end
+  options = vim.tbl_extend('keep', options, DEFAULT_OPTIONS)
+  options._loop_parse_fn = matcher.make(options)
   buf_options[buf] = options
 end
 
 local function on_win(_, _, buf)
   local options = buf_options[buf]
-  if not options then
+  if not options or not options._loop_parse_fn then
     return false
   end
-  options._loop_parse_fn = matcher.make(options)
 end
 
 local function on_line(_, _, buf, row)
@@ -120,10 +121,8 @@ function M.setup(filetypes, user_default_options)
     return
   end
   ft_options = {}
-  settings = {
-    exclusions = {};
-    default_options = vim.tbl_extend('force', DEFAULT_OPTIONS, user_default_options or {});
-  }
+  settings.default_options = vim.tbl_extend('force', DEFAULT_OPTIONS, user_default_options or {});
+
   -- Initialize this AFTER setting COLOR_NAME_SETTINGS
   matcher.initialize_trie()
 
