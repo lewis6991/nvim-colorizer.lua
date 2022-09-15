@@ -536,6 +536,23 @@ local function detach_from_buffer(buf, ns)
   BUFFER_OPTIONS[buf] = nil
 end
 
+local function colorizer_setup_hook()
+  local filetype = vim.bo.filetype
+  if SETUP_SETTINGS.exclusions[filetype] then
+    return
+  end
+  local options = FILETYPE_OPTIONS[filetype] or SETUP_SETTINGS.default_options
+  attach_to_buffer(api.nvim_get_current_buf(), options)
+end
+
+--- Reload all of the currently active highlighted buffers.
+local function reload_all_buffers()
+  for buf, _ in pairs(BUFFER_OPTIONS) do
+    attach_to_buffer(buf)
+  end
+end
+
+local M = {}
 
 --- Easy to use function if you want the full setup without fine grained control.
 -- Setup an autocmd which enables colorizing for the filetypes and options specified.
@@ -556,7 +573,7 @@ end
 -- @param[opt={'*'}] filetypes A table/array of filetypes to selectively enable and/or customize. By default, enables all filetypes.
 -- @tparam[opt] {[string]=string} default_options Default options to apply for the filetypes enable.
 -- @usage require'colorizer'.setup()
-local function setup(filetypes, user_default_options)
+function M.setup(filetypes, user_default_options)
   if not vim.o.termguicolors then
     api.nvim_err_writeln("&termguicolors must be set")
     return
@@ -568,21 +585,12 @@ local function setup(filetypes, user_default_options)
   }
   -- Initialize this AFTER setting COLOR_NAME_SETTINGS
   initialize_trie()
-  function COLORIZER_SETUP_HOOK()
-    local filetype = vim.bo.filetype
-    if SETUP_SETTINGS.exclusions[filetype] then
-      return
-    end
-    local options = FILETYPE_OPTIONS[filetype] or SETUP_SETTINGS.default_options
-    attach_to_buffer(api.nvim_get_current_buf(), options)
-  end
+
   api.nvim_create_augroup("ColorizerSetup", {})
   if not filetypes then
     api.nvim_create_autocmd('FileType', {
       group = 'ColorizerSetup',
-      callback = function()
-        COLORIZER_SETUP_HOOK()
-      end
+      callback = colorizer_setup_hook
     })
   else
     for k, v in pairs(filetypes) do
@@ -608,39 +616,29 @@ local function setup(filetypes, user_default_options)
         api.nvim_create_autocmd('FileType', {
           pattern = filetype,
           group = 'ColorizerSetup',
-          callback = function()
-            COLORIZER_SETUP_HOOK()
-          end
+          callback = colorizer_setup_hook
         })
       end
     end
   end
-end
 
---- Reload all of the currently active highlighted buffers.
-local function reload_all_buffers()
-  for buf, _ in pairs(BUFFER_OPTIONS) do
-    attach_to_buffer(buf)
+  local function command(name, fn)
+    api.nvim_create_user_command(name, function()
+      fn()
+    end, { force = true})
   end
+
+  command('ColorizerAttachToBuffer', attach_to_buffer)
+  command('ColorizerDetachFromBuffer', detach_from_buffer)
+  command('ColorizerReloadAllBuffers', reload_all_buffers)
+  command('ColorizerToggle', function()
+    if is_buffer_attached(0) then
+      detach_from_buffer(0)
+    else
+      attach_to_buffer(0)
+    end
+  end)
+
 end
 
---- Return the currently active buffer options.
--- @tparam[opt=0|nil] integer buf A value of 0 or nil implies the current buffer.
-local function get_buffer_options(buf)
-  if buf == 0 or buf == nil then
-    buf = api.nvim_get_current_buf()
-  end
-  return merge({}, BUFFER_OPTIONS[buf])
-end
-
---- @export
-return {
-  DEFAULT_NAMESPACE = NS;
-  setup = setup;
-  is_buffer_attached = is_buffer_attached;
-  attach_to_buffer = attach_to_buffer;
-  detach_from_buffer = detach_from_buffer;
-  reload_all_buffers = reload_all_buffers;
-  get_buffer_options = get_buffer_options;
-}
-
+return M
