@@ -48,18 +48,12 @@ function M.attach_to_buffer(buf, options)
   buf_options[buf] = options
 end
 
-local function on_buf(_, buf)
-  local options = buf_options[buf]
-  if options then
-    options._loop_parse_fn = matcher.make(options)
-  end
-end
-
 local function on_win(_, _, buf)
   local options = buf_options[buf]
-  if not options or not options._loop_parse_fn then
+  if not options then
     return false
   end
+  options._loop_parse_fn = matcher.make(options)
 end
 
 local function on_line(_, _, buf, row)
@@ -170,7 +164,6 @@ function M.setup(filetypes, user_default_options)
 
   api.nvim_set_decoration_provider(ns, {
     on_win = on_win,
-    on_buf = on_buf,
     on_line = on_line
   })
 
