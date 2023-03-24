@@ -12,6 +12,8 @@ end
 --- Determine whether to use black or white text
 -- Ref: https://stackoverflow.com/a/1855903/837964
 -- https://stackoverflow.com/questions/596216/formula-to-determine-brightness-of-rgb-color
+--- @param rgb_hex string
+--- @return boolean
 local function color_is_bright(rgb_hex)
   local r = tonumber(rgb_hex:sub(1,2), 16)
   local g = tonumber(rgb_hex:sub(3,4), 16)
@@ -21,6 +23,9 @@ local function color_is_bright(rgb_hex)
   return luminance > 0.5
 end
 
+--- @param rgb_hex string
+--- @param mode 'background' | 'foreground'
+--- @return string
 local function create(rgb_hex, mode)
   if #rgb_hex == 3 then
     rgb_hex = table.concat {
@@ -40,8 +45,11 @@ local function create(rgb_hex, mode)
   return highlight_name
 end
 
-local hl_cache = {}
+local hl_cache = {} --- @type table<string,string>
 
+--- @param rgb_hex string
+--- @param options colorizer.Options
+--- @return string
 function M.get_or_create(rgb_hex, options)
   local mode = options.mode or 'background'
   -- TODO validate rgb format?
