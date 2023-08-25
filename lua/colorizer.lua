@@ -63,7 +63,10 @@ end
 local function on_line(_, _, buf, row)
   local options = buf_options[buf]
   local loop_parse_fn = options._loop_parse_fn
-  local line = api.nvim_buf_get_lines(buf, row, row+1, true)[1]
+  local line = api.nvim_buf_get_lines(buf, row, row+1, false)[1]
+  if not line then
+    return
+  end
   local i = 1
   while i < #line do
     local length, rgb_hex = loop_parse_fn(line, i)
