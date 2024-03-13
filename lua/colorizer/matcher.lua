@@ -1,5 +1,5 @@
-local ffi = require 'ffi'
-local Trie = require 'colorizer.trie'
+local ffi = require('ffi')
+local Trie = require('colorizer.trie')
 
 local api = vim.api
 local band, lshift, bor, tohex = bit.band, bit.lshift, bit.bor, bit.tohex
@@ -12,26 +12,28 @@ local color_map ---@type table<string,string>
 local color_trie ---@type colorizer.Trie
 local color_minlen ---@type integer
 local COLOR_NAME_SETTINGS = {
-  lowercase = false;
-  strip_digits = false;
+  lowercase = false,
+  strip_digits = false,
 }
 
 --- Setup the COLOR_MAP and COLOR_TRIE
 function M.initialize_trie()
-  if not color_trie then
-    color_map = {}
-    color_trie = Trie()
-    for k, v in pairs(api.nvim_get_color_map()) do
-      if not (COLOR_NAME_SETTINGS.strip_digits and k:match("%d+$")) then
-        color_minlen = color_minlen and min(#k, color_minlen) or #k
-        local rgb_hex = tohex(v, 6) --[[@as string]]
-        color_map[k] = rgb_hex
-        color_trie:insert(k)
-        if COLOR_NAME_SETTINGS.lowercase then
-          local lowercase = k:lower()
-          color_map[lowercase] = rgb_hex
-          color_trie:insert(lowercase)
-        end
+  if color_trie then
+    return
+  end
+
+  color_map = {}
+  color_trie = Trie()
+  for k, v in pairs(api.nvim_get_color_map()) do
+    if not (COLOR_NAME_SETTINGS.strip_digits and k:match('%d+$')) then
+      color_minlen = color_minlen and min(#k, color_minlen) or #k
+      local rgb_hex = tohex(v, 6) --[[@as string]]
+      color_map[k] = rgb_hex
+      color_trie:insert(k)
+      if COLOR_NAME_SETTINGS.lowercase then
+        local lowercase = k:lower()
+        color_map[lowercase] = rgb_hex
+        color_trie:insert(lowercase)
       end
     end
   end
@@ -48,28 +50,28 @@ end
 
 -- Create a lookup table where the bottom 4 bits are used to indicate the
 -- category and the top 4 bits are the hex value of the ASCII byte.
-local BYTE_CATEGORY = ffi.new 'uint8_t[256]' ---@type table<integer,integer>
-local CATEGORY_DIGIT    = lshift(1, 0);
-local CATEGORY_ALPHA    = lshift(1, 1);
-local CATEGORY_HEX      = lshift(1, 2);
+local BYTE_CATEGORY = ffi.new('uint8_t[256]') ---@type table<integer,integer>
+local CATEGORY_DIGIT = lshift(1, 0)
+local CATEGORY_ALPHA = lshift(1, 1)
+local CATEGORY_HEX = lshift(1, 2)
 local CATEGORY_ALPHANUM = bor(CATEGORY_ALPHA, CATEGORY_DIGIT)
 do
-  local b = string.byte
+  local byte = string.byte
   for i = 0, 255 do
     local v = 0
     -- Digit is bit 1
-    if i >= b'0' and i <= b'9' then
+    if i >= byte('0') and i <= byte('9') then
       v = bor(v, lshift(1, 0))
       v = bor(v, lshift(1, 2))
-      v = bor(v, lshift(i - b'0', 4))
+      v = bor(v, lshift(i - byte('0'), 4))
     end
     local lowercase = bor(i, 0x20)
     -- Alpha is bit 2
-    if lowercase >= b'a' and lowercase <= b'z' then
+    if lowercase >= byte('a') and lowercase <= byte('z') then
       v = bor(v, lshift(1, 1))
-      if lowercase <= b'f' then
+      if lowercase <= byte('f') then
         v = bor(v, lshift(1, 2))
-        v = bor(v, lshift(lowercase - b'a'+10, 4))
+        v = bor(v, lshift(lowercase - byte('a') + 10, 4))
       end
     end
     BYTE_CATEGORY[i] = v
@@ -93,7 +95,7 @@ end
 --- @param i integer
 --- @return integer?, string?
 local function color_name_parser(line, i)
-  if i > 1 and byte_is_alphanumeric(line:byte(i-1)) then
+  if i > 1 and byte_is_alphanumeric(line:byte(i - 1)) then
     return
   end
   if #line < i + color_minlen - 1 then
@@ -112,7 +114,7 @@ local function color_name_parser(line, i)
   end
 end
 
-local b_hash = ("#"):byte()
+local b_hash = ('#'):byte()
 
 --- @param line string
 --- @param i integer
@@ -120,7 +122,7 @@ local b_hash = ("#"):byte()
 --- @param maxlen integer
 --- @return integer?, string?
 local function rgb_hex_parser(line, i, minlen, maxlen)
-  if i > 1 and byte_is_alphanumeric(line:byte(i-1)) then
+  if i > 1 and byte_is_alphanumeric(line:byte(i - 1)) then
     return
   end
 
@@ -163,19 +165,19 @@ local function rgb_hex_parser(line, i, minlen, maxlen)
   end
 
   if alpha then
-    alpha = tonumber(alpha)/255
-    local r = floor(band(v, 0xFF)*alpha)
-    local g = floor(band(rshift(v, 8), 0xFF)*alpha)
-    local b = floor(band(rshift(v, 16), 0xFF)*alpha)
+    alpha = tonumber(alpha) / 255
+    local r = floor(band(v, 0xFF) * alpha)
+    local g = floor(band(rshift(v, 8), 0xFF) * alpha)
+    local b = floor(band(rshift(v, 16), 0xFF) * alpha)
     v = bor(lshift(r, 16), lshift(g, 8), b)
     return 9, tohex(v, 6) --[[@as string]]
   end
-  return length, line:sub(i+1, i+length-1)
+  return length, line:sub(i + 1, i + length - 1)
 end
 
 local css_fn = require('colorizer.css')
 
-local CSS_FUNCTION_TRIE = Trie {'rgb', 'rgba', 'hsl', 'hsla'}
+local CSS_FUNCTION_TRIE = Trie({ 'rgb', 'rgba', 'hsl', 'hsla' })
 
 --- @param line string
 --- @param i integer
@@ -187,7 +189,7 @@ local function css_function_parser(line, i)
   end
 end
 
-local RGB_FUNCTION_TRIE = Trie {'rgb', 'rgba'}
+local RGB_FUNCTION_TRIE = Trie({ 'rgb', 'rgba' })
 
 local function rgb_function_parser(line, i)
   local prefix = RGB_FUNCTION_TRIE:longest_prefix(line:sub(i))
@@ -196,7 +198,7 @@ local function rgb_function_parser(line, i)
   end
 end
 
-local HSL_FUNCTION_TRIE = Trie {'hsl', 'hsla'}
+local HSL_FUNCTION_TRIE = Trie({ 'hsl', 'hsla' })
 
 --- @param line string
 --- @param i integer
@@ -231,64 +233,62 @@ end
 local matcher_cache = {} --- @type table<integer,colorizer.Matcher>
 
 --- @param options colorizer.Options
+--- @return colorizer.Matcher?
 function M.make(options)
-  local enable_names    = options.css or options.names
-  local enable_RGB      = options.css or options.RGB
-  local enable_RRGGBB   = options.css or options.RRGGBB
+  local enable_names = options.css or options.names
+  local enable_RGB = options.css or options.RGB
+  local enable_RRGGBB = options.css or options.RRGGBB
   local enable_RRGGBBAA = options.css or options.RRGGBBAA
-  local enable_rgb      = options.css or options.css_fn or options.rgb_fn
-  local enable_hsl      = options.css or options.css_fn or options.hsl_fn
+  local enable_rgb = options.css or options.css_fn or options.rgb_fn
+  local enable_hsl = options.css or options.css_fn or options.hsl_fn
 
   local matcher_key = bor(
-    lshift(enable_names    and 1 or 0, 0),
-    lshift(enable_RGB      and 1 or 0, 1),
-    lshift(enable_RRGGBB   and 1 or 0, 2),
+    lshift(enable_names and 1 or 0, 0),
+    lshift(enable_RGB and 1 or 0, 1),
+    lshift(enable_RRGGBB and 1 or 0, 2),
     lshift(enable_RRGGBBAA and 1 or 0, 3),
-    lshift(enable_rgb      and 1 or 0, 4),
-    lshift(enable_hsl      and 1 or 0, 5)
+    lshift(enable_rgb and 1 or 0, 4),
+    lshift(enable_hsl and 1 or 0, 5)
   )
 
   if matcher_key == 0 then
     return
   end
 
-  local loop_parse_fn = matcher_cache[matcher_key]
-  if loop_parse_fn then
-    return loop_parse_fn
-  end
-
-  local loop_matchers = {} --- @type colorizer.Matcher[]
-  if enable_names then
-    loop_matchers[#loop_matchers+1] = color_name_parser
-  end
-
-  local valid_lengths = {[3] = enable_RGB, [6] = enable_RRGGBB, [8] = enable_RRGGBBAA}
-  local minlen, maxlen --- @type integer, integer
-  for k, v in pairs(valid_lengths) do
-    if v then
-      minlen = minlen and min(k, minlen) or k
-      maxlen = maxlen and max(k, maxlen) or k
+  if not matcher_cache[matcher_key] then
+    local loop_matchers = {} --- @type colorizer.Matcher[]
+    if enable_names then
+      loop_matchers[#loop_matchers + 1] = color_name_parser
     end
-  end
-  if minlen then
-    loop_matchers[#loop_matchers+1] = function(line, i)
-      local length, rgb_hex = rgb_hex_parser(line, i, minlen, maxlen)
-      if length and valid_lengths[length-1] then
-        return length, rgb_hex
+
+    local valid_lengths = { [3] = enable_RGB, [6] = enable_RRGGBB, [8] = enable_RRGGBBAA }
+    local minlen, maxlen --- @type integer, integer
+    for k, v in pairs(valid_lengths) do
+      if v then
+        minlen = minlen and min(k, minlen) or k
+        maxlen = maxlen and max(k, maxlen) or k
       end
     end
+    if minlen then
+      loop_matchers[#loop_matchers + 1] = function(line, i)
+        local length, rgb_hex = rgb_hex_parser(line, i, minlen, maxlen)
+        if length and valid_lengths[length - 1] then
+          return length, rgb_hex
+        end
+      end
+    end
+
+    if enable_rgb and enable_hsl then
+      loop_matchers[#loop_matchers + 1] = css_function_parser
+    elseif enable_rgb then
+      loop_matchers[#loop_matchers + 1] = rgb_function_parser
+    elseif enable_hsl then
+      loop_matchers[#loop_matchers + 1] = hsl_function_parser
+    end
+    matcher_cache[matcher_key] = compile_matcher(loop_matchers)
   end
 
-  if enable_rgb and enable_hsl then
-    loop_matchers[#loop_matchers+1] = css_function_parser
-  elseif enable_rgb then
-    loop_matchers[#loop_matchers+1] = rgb_function_parser
-  elseif enable_hsl then
-    loop_matchers[#loop_matchers+1] = hsl_function_parser
-  end
-  loop_parse_fn = compile_matcher(loop_matchers)
-  matcher_cache[matcher_key] = loop_parse_fn
-  return loop_parse_fn
+  return matcher_cache[matcher_key]
 end
 
 return M

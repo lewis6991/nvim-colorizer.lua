@@ -23,16 +23,16 @@
 --- @field is_leaf boolean
 --- @operator call:colorizer.Trie
 
-local ffi = require 'ffi'
+local ffi = require('ffi')
 
-ffi.cdef [[
+ffi.cdef([[
   struct Trie {
     bool is_leaf;
     struct Trie* character[62];
   };
   void *malloc(size_t size);
   void free(void *ptr);
-]]
+]])
 
 local Trie_t = ffi.typeof('struct Trie')
 local Trie_ptr_t = ffi.typeof('$ *', Trie_t)
@@ -62,17 +62,17 @@ local function trie_destroy(self)
 end
 
 ---@type table<integer,integer>
-local INDEX_LOOKUP_TABLE = ffi.new 'uint8_t[256]'
+local INDEX_LOOKUP_TABLE = ffi.new('uint8_t[256]')
 local CHAR_LOOKUP_TABLE = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 do
   local b = string.byte
   for i = 0, 255 do
-    if i >= b'0' and i <= b'9' then
-      INDEX_LOOKUP_TABLE[i] = i - b'0'
-    elseif i >= b'A' and i <= b'Z' then
-      INDEX_LOOKUP_TABLE[i] = i - b'A' + 10
-    elseif i >= b'a' and i <= b'z' then
-      INDEX_LOOKUP_TABLE[i] = i - b'a' + 10 + 26
+    if i >= b('0') and i <= b('9') then
+      INDEX_LOOKUP_TABLE[i] = i - b('0')
+    elseif i >= b('A') and i <= b('Z') then
+      INDEX_LOOKUP_TABLE[i] = i - b('A') + 10
+    elseif i >= b('a') and i <= b('z') then
+      INDEX_LOOKUP_TABLE[i] = i - b('a') + 10 + 26
     else
       INDEX_LOOKUP_TABLE[i] = 255
     end
@@ -109,7 +109,9 @@ end
 --- @param start integer
 --- @return boolean?
 local function trie_search(self, value, start)
-  if self == nil then return false end
+  if self == nil then
+    return false
+  end
   local node = self
   for i = (start or 1), #value do
     local index = INDEX_LOOKUP_TABLE[value:byte(i)]
@@ -182,7 +184,7 @@ local function index_to_char(index)
   if index < 0 or index > 61 then
     return
   end
-  return CHAR_LOOKUP_TABLE:sub(index+1, index+1)
+  return CHAR_LOOKUP_TABLE:sub(index + 1, index + 1)
 end
 
 --- @class colorizer.TrieTable
@@ -207,8 +209,8 @@ local function trie_as_table(trie)
     end
   end
   return {
-    is_leaf = trie.is_leaf;
-    children = children;
+    is_leaf = trie.is_leaf,
+    children = children,
   }
 end
 
@@ -217,22 +219,22 @@ end
 local function print_trie_table(s)
   local mark ---@type string
   if not s then
-    return {'nil'}
+    return { 'nil' }
   end
 
   local c = s.c
   if c then
     if s.is_leaf then
-      mark = c.."*"
+      mark = c .. '*'
     else
-      mark = c.."─"
+      mark = c .. '─'
     end
   else
-    mark = "├─"
+    mark = '├─'
   end
 
   if #s.children == 0 then
-    return {mark}
+    return { mark }
   end
 
   local lines = {} ---@type string[]
@@ -245,22 +247,22 @@ local function print_trie_table(s)
   local child_count = 0
   for i, line in ipairs(lines) do
     local line_parts = {}
-    if line:match("^%w") then
+    if line:match('^%w') then
       child_count = child_count + 1
       if i == 1 then
-        line_parts = {mark}
+        line_parts = { mark }
       elseif i == #lines or child_count == #s.children then
-        line_parts = {"└─"}
+        line_parts = { '└─' }
       else
-        line_parts = {"├─"}
+        line_parts = { '├─' }
       end
     else
       if i == 1 then
-        line_parts = {mark}
+        line_parts = { mark }
       elseif #s.children > 1 and child_count ~= #s.children then
-        line_parts = {"│ "}
+        line_parts = { '│ ' }
       else
-        line_parts = {"  "}
+        line_parts = { '  ' }
       end
     end
     table.insert(line_parts, line)
@@ -270,6 +272,7 @@ local function print_trie_table(s)
 end
 
 --- @param trie colorizer.Trie
+--- @return string
 local function trie_to_string(trie)
   if trie == nil then
     return 'nil'
@@ -285,15 +288,15 @@ local Trie_mt = {
       trie_extend(trie, init)
     end
     return trie
-  end;
+  end,
   __index = {
     insert = trie_insert,
     search = trie_search,
     longest_prefix = trie_longest_prefix,
     extend = trie_extend,
-  };
-  __tostring = trie_to_string;
-  __gc = trie_destroy;
+  },
+  __tostring = trie_to_string,
+  __gc = trie_destroy,
 }
 
 return ffi.metatype('struct Trie', Trie_mt) --[[@as colorizer.Trie]]
