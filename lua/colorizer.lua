@@ -60,6 +60,33 @@ local function on_win(_, _, buf)
   end
 end
 
+--- @param buf integer
+--- @param line string
+--- @param row integer
+local function on_line_vimhelp(buf, line, row)
+  local i = 0 --- @type integer?
+  while true do
+    local s, e = line:find('`[a-zA-Z@][a-zA-Z0-9_]*`', i+1)
+
+    if not (s and e) then
+      break
+    end
+
+    i = s
+
+    local hl_group = line:sub(s+1, e-1)
+    local exists = next(api.nvim_get_hl(0, { name = hl_group })) ~= nil
+
+    if exists then
+      api.nvim_buf_set_extmark(buf, ns, row, s, {
+        end_col = e,
+        hl_group = hl_group,
+        ephemeral = true,
+      })
+    end
+  end
+end
+
 local function on_line(_, _, buf, row)
   local options = buf_options[buf]
   local loop_parse_fn = options._loop_parse_fn
@@ -82,6 +109,11 @@ local function on_line(_, _, buf, row)
       i = i + 1
     end
   end
+
+  if vim.bo[buf].filetype == 'help' then
+    on_line_vimhelp(buf, line, row)
+  end
+
 end
 
 local done_init = false
